@@ -72,7 +72,7 @@
                     <TextBox x:Name="CertificateUrlText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="44"/>
                     <TextBlock Text="Certificate SHA-256 fingerprint" Foreground="#a9d4ff"/>
                     <TextBlock x:Name="CertificateFingerprintText" Text="" TextWrapping="Wrap" Foreground="#c9f4ff"/>
-                    <TextBlock Text="On Android: open the certificate link, install it as a CA certificate in Settings, then open the HTTPS controller URL. Allow MotionLink VR on the Windows firewall's Private networks prompt." Foreground="#ffc98f" TextWrapping="Wrap"/>
+                    <TextBlock Text="Android APK: search for this PC on the same Wi-Fi, enter the pairing code, and verify this fingerprint before connecting. For the browser controller, install the certificate as a CA certificate first. Allow MotionLink VR through Windows Firewall on Private networks (TCP 47820/47821 and UDP 47822)." Foreground="#ffc98f" TextWrapping="Wrap"/>
                     <TextBlock Text="Pairing code" Foreground="#a9d4ff"/>
                     <TextBlock x:Name="PairingCodeText" Text="Not started" FontSize="20" FontWeight="Bold" Foreground="#c9f4ff"/>
                     <TextBlock x:Name="LatencyText" Text="Stream: disconnected" Foreground="#a9d4ff"/>

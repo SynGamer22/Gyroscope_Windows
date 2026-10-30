@@ -28,8 +28,15 @@ Thumbs.db
 artifacts/
 !artifacts/
 !artifacts/*.zip
+!artifacts/*.apk
+/artifacts/windows-x64/
 publish/
 coverage/
+
+# Android
+android/.gradle/
+android/**/build/
+android/local.properties
 
 # Web assets
 mobile/icons/*.png

@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -27,6 +28,7 @@ public sealed class LanMotionServer : IAsyncDisposable
 {
     public const int DefaultHttpPort = 47820;
     public const int DefaultHttpsPort = 47821;
+    public const int DefaultDiscoveryPort = 47822;
 
     private readonly WebApplication _application;
     private readonly X509Certificate2 _serverCertificate;
@@ -34,11 +36,13 @@ public sealed class LanMotionServer : IAsyncDisposable
     private readonly Action<MotionPacket> _onMotion;
     private readonly Action<bool> _onConnection;
     private readonly string _pairingCode;
+    private readonly LanDiscoveryService _discoveryService;
     private int _connectedClients;
 
     public IPAddress Address { get; }
     public int HttpPort { get; }
     public int HttpsPort { get; }
+    public int DiscoveryPort { get; }
     public string PairingCode => _pairingCode;
     public string ControllerUrl => $"https://{Address}:{HttpsPort}/?code={_pairingCode}";
     public string CertificateUrl => $"http://{Address}:{HttpPort}/root-ca.cer";
@@ -51,6 +55,8 @@ public sealed class LanMotionServer : IAsyncDisposable
         IPAddress address,
         int httpPort,
         int httpsPort,
+        int discoveryPort,
+        LanDiscoveryService discoveryService,
         string pairingCode,
         Action<MotionPacket> onMotion,
         Action<bool> onConnection)
@@ -61,6 +67,8 @@ public sealed class LanMotionServer : IAsyncDisposable
         Address = address;
         HttpPort = httpPort;
         HttpsPort = httpsPort;
+        DiscoveryPort = discoveryPort;
+        _discoveryService = discoveryService;
         _pairingCode = pairingCode;
         _onMotion = onMotion;
         _onConnection = onConnection;
@@ -72,11 +80,30 @@ public sealed class LanMotionServer : IAsyncDisposable
         Action<bool> onConnection,
         int httpPort = DefaultHttpPort,
         int httpsPort = DefaultHttpsPort,
+        int discoveryPort = DefaultDiscoveryPort,
         CancellationToken cancellationToken = default)
     {
+        var webRoot = Path.GetFullPath(mobileRoot);
+        if (!Directory.Exists(webRoot))
+        {
+            throw new DirectoryNotFoundException($"Mobile site files were not found at {webRoot}.");
+        }
+
         var address = GetLanAddress();
         var (rootCertificate, serverCertificate) = LanCertificateProvider.CreateServerCertificate(address);
         var pairingCode = CreatePairingCode();
+        LanDiscoveryService discoveryService;
+        try
+        {
+            discoveryService = new LanDiscoveryService(address, httpPort, httpsPort, discoveryPort);
+        }
+        catch
+        {
+            serverCertificate.Dispose();
+            rootCertificate.Dispose();
+            throw;
+        }
+
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
         {
             ContentRootPath = AppContext.BaseDirectory,
@@ -107,6 +134,8 @@ public sealed class LanMotionServer : IAsyncDisposable
             address,
             httpPort,
             httpsPort,
+            discoveryPort,
+            discoveryService,
             pairingCode,
             onMotion,
             onConnection);
@@ -144,22 +173,30 @@ public sealed class LanMotionServer : IAsyncDisposable
             }
         });
 
-        var webRoot = Path.GetFullPath(mobileRoot);
-        if (!Directory.Exists(webRoot))
-        {
-            throw new DirectoryNotFoundException($"Mobile site files were not found at {webRoot}.");
-        }
-
         var provider = new PhysicalFileProvider(webRoot);
         application.UseDefaultFiles(new DefaultFilesOptions { FileProvider = provider });
         application.UseStaticFiles(new StaticFileOptions { FileProvider = provider });
 
-        await application.StartAsync(cancellationToken);
+        try
+        {
+            await application.StartAsync(cancellationToken);
+            discoveryService.Start();
+        }
+        catch
+        {
+            await application.DisposeAsync();
+            await discoveryService.DisposeAsync();
+            serverCertificate.Dispose();
+            rootCertificate.Dispose();
+            throw;
+        }
+
         return server;
     }
 
     public async ValueTask DisposeAsync()
     {
+        await _discoveryService.DisposeAsync();
         await _application.StopAsync();
         await _application.DisposeAsync();
         _serverCertificate.Dispose();
@@ -320,6 +357,68 @@ public sealed class LanMotionServer : IAsyncDisposable
         NetworkInterfaceType InterfaceType,
         bool HasGateway,
         bool IsPrivateAddress);
+}
+
+internal sealed class LanDiscoveryService : IAsyncDisposable
+{
+    internal const string DiscoveryRequest = "MOTIONLINK_DISCOVER_V1";
+
+    private readonly UdpClient _udpClient;
+    private readonly byte[] _response;
+    private readonly CancellationTokenSource _cancellation = new();
+    private Task? _receiveTask;
+
+    public LanDiscoveryService(IPAddress address, int httpPort, int httpsPort, int discoveryPort)
+    {
+        _udpClient = new UdpClient(new IPEndPoint(IPAddress.Any, discoveryPort));
+        _response = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            service = "MotionLinkVR",
+            address = address.ToString(),
+            httpPort,
+            httpsPort
+        });
+    }
+
+    public void Start()
+    {
+        _receiveTask = ReceiveAsync(_cancellation.Token);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _cancellation.Cancel();
+        if (_receiveTask is not null)
+        {
+            try
+            {
+                await _receiveTask;
+            }
+            catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
+            {
+            }
+        }
+
+        _udpClient.Dispose();
+        _cancellation.Dispose();
+    }
+
+    private async Task ReceiveAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var request = await _udpClient.ReceiveAsync(cancellationToken);
+            if (!string.Equals(
+                    Encoding.UTF8.GetString(request.Buffer),
+                    DiscoveryRequest,
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            await _udpClient.SendAsync(_response, request.RemoteEndPoint, cancellationToken);
+        }
+    }
 }
 
 internal static class LanCertificateProvider

@@ -20,6 +20,7 @@ MotionLink VR is a phone gyroscope controller and Windows companion app for came
 - Connection status and sensor status panels
 - Device support checks for unsupported browsers
 - Temporary pairing code and direct same-Wi-Fi connection
+- Native Android APK with automatic PC discovery and secure pairing
 - Controller site served by the Windows app over local HTTPS
 - PWA install support when served over HTTPS
 
@@ -36,9 +37,9 @@ MotionLink VR is a phone gyroscope controller and Windows companion app for came
 
 ## Connection architecture
 
-1. The Windows app starts a local HTTPS site and WebSocket on the PC's Wi-Fi address.
-2. The PC displays a temporary pairing URL and code.
-3. Android Chrome opens that URL, requests motion permission, and sends small orientation packets directly to the PC.
+1. The Windows app starts a local HTTPS site and WebSocket on the PC's Wi-Fi address, plus a small UDP listener for local discovery.
+2. The PC displays a temporary pairing URL, code, and certificate fingerprint.
+3. The Android APK searches the same Wi-Fi for the PC, verifies its certificate fingerprint with the user, and sends orientation packets directly to the PC.
 4. The desktop app converts the latest yaw and pitch changes into relative mouse deltas.
 
 This direct local connection does not use Supabase, WebRTC, a public website, or a cloud relay. It is intended for devices on the same Wi-Fi. A router setting called client isolation or guest isolation can block devices from reaching each other.
@@ -59,6 +60,7 @@ This direct local connection does not use Supabase, WebRTC, a public website, or
 ├── .github/
 │   └── workflows/
 │       ├── build-windows.yml
+│       ├── build-android.yml
 │       └── release.yml
 ├── README.md
 ├── desktop/
@@ -66,6 +68,8 @@ This direct local connection does not use Supabase, WebRTC, a public website, or
 │   ├── MotionLinkVR.Core/
 │   ├── MotionLinkVR.Tests/
 │   └── MotionLinkVR.sln
+├── android/
+│   └── app/
 ├── mobile/
 │   ├── app.js
 │   ├── index.html
@@ -85,7 +89,17 @@ This direct local connection does not use Supabase, WebRTC, a public website, or
 
 No Supabase account, public website, or cloud credentials are required for same-Wi-Fi use. `supabase/schema.sql` is a leftover signaling prototype and is not used by the local LAN connection. Do not configure it for this workflow.
 
-## Connect your phone on the same Wi-Fi
+## Connect with the Android APK
+
+1. Download the `MotionLinkVR-Android` artifact from the latest successful **Build Android Controller** workflow run and install its APK on the phone. Android may ask you to allow installation from the browser or file manager used to download it.
+2. Start the Windows app and click **Start LAN**. Allow MotionLink VR through Windows Defender Firewall for **Private networks**.
+3. Open the Android app and tap **Search for PCs**. Choose the PC found on the same Wi-Fi and enter the temporary pairing code displayed by the Windows app.
+4. Compare the certificate SHA-256 fingerprint in the Android confirmation with the Windows app. Only tap **Matches — connect** if they are identical.
+5. Tap **Start motion**, hold the phone still briefly to set its neutral position, and use **Pause**, **Recenter**, **Disconnect**, or the sensitivity controls as needed.
+
+Automatic discovery uses UDP port `47822`; the control connection uses TCP port `47821` and the local certificate download uses TCP port `47820`. Both devices must be on the same non-guest Wi-Fi, and the router must allow device-to-device traffic. If discovery fails, allow the Windows app through the firewall on Private networks and confirm client/AP isolation is disabled. Discovery does not transmit the pairing code; enter it from the Windows screen.
+
+## Connect with Android Chrome
 
 1. Install and extract the latest Windows ZIP. Keep every file from the ZIP together in one folder.
 2. Start `MotionLinkVR.App.exe` on the PC and click **Start LAN**.
@@ -99,6 +113,15 @@ No Supabase account, public website, or cloud credentials are required for same-
 Both devices must be on the same non-guest Wi-Fi. Turn off VPNs temporarily if they route local traffic away from the LAN. If the certificate or connection fails, stop and start the LAN server to generate a fresh URL and pairing code. The app listens on TCP ports `47820` (certificate download) and `47821` (HTTPS/WebSocket).
 
 The phone can send motion only while the Windows app is running and **Start LAN** is active. The server stops when you click **Stop** or exit the app.
+
+Build the Android debug APK locally with:
+
+```bash
+cd android
+./gradlew testDebugUnitTest lintDebug assembleDebug
+```
+
+The installable APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Build the Windows app
 

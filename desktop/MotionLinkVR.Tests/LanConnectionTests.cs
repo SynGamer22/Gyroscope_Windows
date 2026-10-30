@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using MotionLinkVR.App;
 using Xunit;
 
@@ -29,13 +30,32 @@ public class LanConnectionTests
         var packetReceived = new TaskCompletionSource<MotionPacket>(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConnected = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var ports = GetTwoAvailablePorts();
+        var discoveryPort = GetAvailableUdpPort();
 
         await using var server = await LanMotionServer.StartAsync(
             mobileRoot,
             packet => packetReceived.TrySetResult(packet),
             connected => clientConnected.TrySetResult(connected),
             ports.Http,
-            ports.Https);
+            ports.Https,
+            discoveryPort);
+
+        using (var discoveryClient = new UdpClient(AddressFamily.InterNetwork))
+        using (var discoveryTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+        {
+            var request = Encoding.UTF8.GetBytes("MOTIONLINK_DISCOVER_V1");
+            await discoveryClient.SendAsync(
+                request,
+                new IPEndPoint(IPAddress.Loopback, server.DiscoveryPort),
+                discoveryTimeout.Token);
+            var response = await discoveryClient.ReceiveAsync(discoveryTimeout.Token);
+            using var discovery = JsonDocument.Parse(response.Buffer);
+
+            Assert.Equal("MotionLinkVR", discovery.RootElement.GetProperty("service").GetString());
+            Assert.Equal(server.Address.ToString(), discovery.RootElement.GetProperty("address").GetString());
+            Assert.Equal(server.HttpPort, discovery.RootElement.GetProperty("httpPort").GetInt32());
+            Assert.Equal(server.HttpsPort, discovery.RootElement.GetProperty("httpsPort").GetInt32());
+        }
 
         using var httpHandler = new HttpClientHandler
         {
@@ -84,5 +104,11 @@ public class LanConnectionTests
         second.Start();
         var https = ((IPEndPoint)second.LocalEndpoint).Port;
         return (http, https);
+    }
+
+    private static int GetAvailableUdpPort()
+    {
+        using var udpClient = new UdpClient(0);
+        return ((IPEndPoint)udpClient.Client.LocalEndPoint!).Port;
     }
 }
