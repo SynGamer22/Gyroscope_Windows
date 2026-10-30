@@ -1,0 +1,79 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MotionLinkVR.App.MainWindow"
+        Title="MotionLink VR"
+        Width="820"
+        Height="620"
+        MinWidth="720"
+        MinHeight="520"
+        CanResize="True">
+    <Grid Margin="18" RowDefinitions="Auto,*" ColumnDefinitions="*">
+        <Border Grid.Row="0" Padding="18" Margin="0,0,0,16" CornerRadius="18" Background="#121826" BorderBrush="#2f5dff" BorderThickness="1">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Column="0" Text="MotionLink VR" FontSize="28" FontWeight="SemiBold" Foreground="#EAF4FF" VerticalAlignment="Center"/>
+                <Border Grid.Column="1" Width="18" Height="18" CornerRadius="9" Margin="16,0" Background="#28d17c" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                    <Button Content="Start" Width="110" Click="StartButton_Click"/>
+                    <Button Content="Stop" Width="110" Click="StopButton_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" ColumnDefinitions="1.2*,0.8*" RowDefinitions="*">
+            <Border Grid.Column="0" CornerRadius="18" Background="#0e1628" BorderBrush="#4960a8" BorderThickness="1" Padding="18">
+                <StackPanel Spacing="18">
+                    <TextBlock Text="Connection" FontSize="18" FontWeight="SemiBold" Foreground="#dfe9ff"/>
+                    <TextBlock x:Name="ConnectionStatusText" Text="Disconnected" Foreground="#8cc6ff" FontSize="16"/>
+                    <TextBlock x:Name="OrientationText" Text="Pitch: 0.00 | Yaw: 0.00 | Roll: 0.00" FontSize="16" Foreground="#e7ebff"/>
+                    <TextBlock x:Name="MouseText" Text="Mouse delta: 0, 0" FontSize="16" Foreground="#e7ebff"/>
+
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
+                        <TextBlock Text="Sensitivity" Foreground="#dfe9ff" FontSize="14" VerticalAlignment="Center"/>
+                        <Slider x:Name="SensitivitySlider" Grid.Column="1" Width="250" Minimum="0.1" Maximum="5" Value="1.2" TickFrequency="0.1" IsSnapToTickEnabled="False"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
+                        <TextBlock Text="Smoothing" Foreground="#dfe9ff" FontSize="14" VerticalAlignment="Center"/>
+                        <Slider x:Name="SmoothingSlider" Grid.Column="1" Width="250" Minimum="0" Maximum="1" Value="0.2" TickFrequency="0.05"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
+                        <TextBlock Text="Deadzone" Foreground="#dfe9ff" FontSize="14" VerticalAlignment="Center"/>
+                        <Slider x:Name="DeadzoneSlider" Grid.Column="1" Width="250" Minimum="0" Maximum="10" Value="0.8" TickFrequency="0.5"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto">
+                        <TextBlock Text="Pause hotkey" Foreground="#dfe9ff" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Margin="12,0" Text="Pause" x:Name="PauseHotkeyText"/>
+                        <CheckBox Grid.Column="2" Content="Invert X" x:Name="InvertXCheck"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto">
+                        <TextBlock Text="Emergency stop" Foreground="#dfe9ff" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Margin="12,0" Text="Ctrl+Shift+Esc" x:Name="EmergencyHotkeyText"/>
+                        <CheckBox Grid.Column="2" Content="Invert Y" x:Name="InvertYCheck"/>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="Recenter" Click="RecenterButton_Click" Width="120"/>
+                        <Button Content="Pause" Click="PauseButton_Click" Width="120"/>
+                        <Button Content="Emergency Stop" Click="EmergencyStopButton_Click" Width="140" Background="#9f2d2d"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" CornerRadius="18" Background="#121b2e" BorderBrush="#4960a8" BorderThickness="1" Padding="18">
+                <StackPanel Spacing="18">
+                    <TextBlock Text="Status" FontSize="18" FontWeight="SemiBold" Foreground="#dfe9ff"/>
+                    <TextBlock Text="Controller status: Ready" Foreground="#a9d4ff"/>
+                    <TextBlock Text="Latency: 0 ms" Foreground="#a9d4ff"/>
+                    <TextBlock Text="Session: Not paired" Foreground="#a9d4ff"/>
+                    <TextBlock Text="Motion active: false" Foreground="#a9d4ff"/>
+                    <TextBlock Text="Tray: Available" Foreground="#a9d4ff"/>
+                    <TextBlock Text="Build: Portable x64" Foreground="#a9d4ff"/>
+                    <TextBlock Text="Warning: Some games may block synthetic input or require anti-cheat exceptions." Foreground="#ffc98f" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

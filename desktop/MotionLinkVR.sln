@@ -1,0 +1,33 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MotionLinkVR.Core", "MotionLinkVR.Core\MotionLinkVR.Core.csproj", "{A7850E89-D8FF-4F0F-B675-4B7CC1D5FB32}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MotionLinkVR.Tests", "MotionLinkVR.Tests\MotionLinkVR.Tests.csproj", "{2B2F2A34-A0A5-4F5A-B61B-6F755F41E8F1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MotionLinkVR.App", "MotionLinkVR.App\MotionLinkVR.App.csproj", "{D40B11B3-40C6-485B-A1F8-4D0E5F7278B4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A7850E89-D8FF-4F0F-B675-4B7CC1D5FB32}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A7850E89-D8FF-4F0F-B675-4B7CC1D5FB32}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A7850E89-D8FF-4F0F-B675-4B7CC1D5FB32}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A7850E89-D8FF-4F0F-B675-4B7CC1D5FB32}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B2F2A34-A0A5-4F5A-B61B-6F755F41E8F1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B2F2A34-A0A5-4F5A-B61B-6F755F41E8F1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B2F2A34-A0A5-4F5A-B61B-6F755F41E8F1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B2F2A34-A0A5-4F5A-B61B-6F755F41E8F1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D40B11B3-40C6-485B-A1F8-4D0E5F7278B4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D40B11B3-40C6-485B-A1F8-4D0E5F7278B4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D40B11B3-40C6-485B-A1F8-4D0E5F7278B4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D40B11B3-40C6-485B-A1F8-4D0E5F7278B4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

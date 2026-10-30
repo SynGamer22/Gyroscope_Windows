@@ -1,0 +1,50 @@
+name: Release MotionLink VR
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore ./desktop/MotionLinkVR.sln
+
+      - name: Build and test
+        run: |
+          dotnet build ./desktop/MotionLinkVR.sln --configuration Release --no-restore
+          dotnet test ./desktop/MotionLinkVR.Tests/MotionLinkVR.Tests.csproj --configuration Release --no-build
+
+      - name: Publish portable Windows app
+        run: |
+          dotnet publish ./desktop/MotionLinkVR.App/MotionLinkVR.App.csproj \
+            --configuration Release \
+            --runtime win-x64 \
+            --self-contained true \
+            --output ./artifacts/windows-x64 \
+            -p:PublishSingleFile=true \
+            -p:UseAppHost=true
+
+      - name: Zip portable output
+        shell: pwsh
+        run: |
+          Compress-Archive -Path ./artifacts/windows-x64/* -DestinationPath ./artifacts/MotionLinkVR-Windows-x64.zip -Force
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ./artifacts/MotionLinkVR-Windows-x64.zip
