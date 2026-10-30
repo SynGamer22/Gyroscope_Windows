@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a1020" />
+    <title>MotionLink VR</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar panel">
+        <div class="brand-wrap">
+          <div class="logo">M</div>
+          <div>
+            <h1>MotionLink VR</h1>
+          </div>
+        </div>
+        <div id="connectionBadge" class="badge disconnected">Disconnected</div>
+      </header>
+
+      <main class="content">
+        <section class="panel hero-panel">
+          <button id="startMotionButton" class="primary-button">Start Motion</button>
+          <div id="orientationDisplay" class="orientation-display">
+            <div class="orb">
+              <div id="motionMarker" class="motion-marker"></div>
+            </div>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="label">Pitch</span>
+              <strong id="pitchValue">0.00°</strong>
+            </div>
+            <div class="stat-card">
+              <span class="label">Yaw</span>
+              <strong id="yawValue">0.00°</strong>
+            </div>
+            <div class="stat-card">
+              <span class="label">Roll</span>
+              <strong id="rollValue">0.00°</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel controls-panel">
+          <div class="settings-row">
+            <label for="sensitivityRange">Sensitivity</label>
+            <output id="sensitivityValue">1.0x</output>
+          </div>
+          <input id="sensitivityRange" type="range" min="0.2" max="4" step="0.1" value="1.0" />
+
+          <div class="settings-row">
+            <label for="smoothingRange">Smoothing</label>
+            <output id="smoothingValue">0.20</output>
+          </div>
+          <input id="smoothingRange" type="range" min="0" max="1" step="0.05" value="0.2" />
+
+          <div class="settings-row">
+            <label for="deadzoneRange">Deadzone</label>
+            <output id="deadzoneValue">0.6°</output>
+          </div>
+          <input id="deadzoneRange" type="range" min="0" max="10" step="0.1" value="0.6" />
+
+          <div class="action-row">
+            <button id="recenterButton" class="secondary-button">Recenter</button>
+            <button id="pauseButton" class="secondary-button">Pause</button>
+            <button id="disconnectButton" class="danger-button">Disconnect</button>
+          </div>
+
+          <div class="status-box">
+            <div><span>Sensor</span><strong id="sensorStatus">Waiting</strong></div>
+            <div><span>Connection</span><strong id="connectionStatus">Disconnected</strong></div>
+          </div>
+
+          <p id="errorMessage" class="error-message" role="alert" hidden></p>
+
+          <div class="pairing-box">
+            <h3>Pairing</h3>
+            <div id="pairingCode" class="pairing-code">--</div>
+            <p>Stay on the same Wi-Fi as the PC. Motion is sent directly to the PC over a secure local connection.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
