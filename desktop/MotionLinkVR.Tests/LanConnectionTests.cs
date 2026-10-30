@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Net.Http;
@@ -8,6 +9,19 @@ using Xunit;
 
 public class LanConnectionTests
 {
+    [Fact]
+    public void SelectPreferredLanAddress_PrefersGatewayedWirelessInterface()
+    {
+        var selected = LanMotionServer.SelectPreferredLanAddress([
+            new LanMotionServer.LanAddressCandidate(IPAddress.Parse("10.0.0.5"), NetworkInterfaceType.Unknown, false, true),
+            new LanMotionServer.LanAddressCandidate(IPAddress.Parse("169.254.12.34"), NetworkInterfaceType.Wireless80211, true, false),
+            new LanMotionServer.LanAddressCandidate(IPAddress.Parse("192.168.1.42"), NetworkInterfaceType.Wireless80211, true, true),
+            new LanMotionServer.LanAddressCandidate(IPAddress.Parse("172.25.8.7"), NetworkInterfaceType.Ethernet, true, true)
+        ]);
+
+        Assert.Equal(IPAddress.Parse("192.168.1.42"), selected);
+    }
+
     [Fact]
     public async Task Server_ReceivesMotionOnlyWithCorrectPairingCode()
     {

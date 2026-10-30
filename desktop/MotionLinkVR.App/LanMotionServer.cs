@@ -234,45 +234,92 @@ public sealed class LanMotionServer : IAsyncDisposable
 
     private static IPAddress GetLanAddress()
     {
-        var addresses = NetworkInterface.GetAllNetworkInterfaces()
-            .Where(item => item.OperationalStatus == OperationalStatus.Up
-                && item.NetworkInterfaceType != NetworkInterfaceType.Loopback
-                && item.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
-            .SelectMany(item => item.GetIPProperties().UnicastAddresses)
-            .Select(item => item.Address)
-            .Where(item => item.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(item))
-            .Where(item =>
-            {
-                var bytes = item.GetAddressBytes();
-                return bytes[0] != 169 || bytes[1] != 254;
-            })
-            .Distinct()
+        var candidates = NetworkInterface.GetAllNetworkInterfaces()
+            .Where(IsUsableLanInterface)
+            .SelectMany(item => item.GetIPProperties().UnicastAddresses
+                .Select(address => new LanAddressCandidate(
+                    address.Address,
+                    item.NetworkInterfaceType,
+                    item.GetIPProperties().GatewayAddresses.Count > 0,
+                    IsPrivateAddress(address.Address))))
+            .Where(candidate => IsUsableLanAddress(candidate.Address))
             .ToArray();
 
-        return addresses.FirstOrDefault(address => IsPrivateAddress(address) && IsWirelessAddress(address))
-            ?? addresses.FirstOrDefault(address => IsPrivateAddress(address) && IsEthernetAddress(address))
-            ?? addresses.FirstOrDefault(IsPrivateAddress)
-            ?? addresses.FirstOrDefault()
-            ?? IPAddress.Loopback;
+        return SelectPreferredLanAddress(candidates) ?? IPAddress.Loopback;
     }
 
-    private static bool IsWirelessAddress(IPAddress address) => HasInterfaceType(address, NetworkInterfaceType.Wireless80211);
+    public static IPAddress SelectPreferredLanAddress(IEnumerable<LanAddressCandidate> candidates)
+    {
+        return candidates
+            .Where(candidate => IsUsableLanAddress(candidate.Address))
+            .OrderByDescending(candidate => candidate.HasGateway)
+            .ThenByDescending(candidate => candidate.InterfaceType == NetworkInterfaceType.Wireless80211)
+            .ThenByDescending(candidate => candidate.InterfaceType == NetworkInterfaceType.Ethernet)
+            .ThenByDescending(candidate => candidate.IsPrivateAddress)
+            .Select(candidate => candidate.Address)
+            .FirstOrDefault() ?? IPAddress.Loopback;
+    }
 
-    private static bool IsEthernetAddress(IPAddress address) => HasInterfaceType(address, NetworkInterfaceType.Ethernet);
+    private static bool IsUsableLanInterface(NetworkInterface item)
+    {
+        if (item.OperationalStatus != OperationalStatus.Up)
+        {
+            return false;
+        }
 
-    private static bool HasInterfaceType(IPAddress address, NetworkInterfaceType type) =>
-        NetworkInterface.GetAllNetworkInterfaces()
-            .Where(item => item.NetworkInterfaceType == type && item.OperationalStatus == OperationalStatus.Up)
-            .SelectMany(item => item.GetIPProperties().UnicastAddresses)
-            .Any(item => item.Address.Equals(address));
+        if (item.NetworkInterfaceType is NetworkInterfaceType.Loopback
+            or NetworkInterfaceType.Tunnel
+            or NetworkInterfaceType.Ppp)
+        {
+            return false;
+        }
+
+        var name = item.Name ?? string.Empty;
+        var description = item.Description ?? string.Empty;
+        return !name.Contains("vEthernet", StringComparison.OrdinalIgnoreCase)
+            && !name.Contains("VirtualBox", StringComparison.OrdinalIgnoreCase)
+            && !name.Contains("VMware", StringComparison.OrdinalIgnoreCase)
+            && !name.Contains("Docker", StringComparison.OrdinalIgnoreCase)
+            && !name.Contains("WSL", StringComparison.OrdinalIgnoreCase)
+            && !description.Contains("Virtual", StringComparison.OrdinalIgnoreCase)
+            && !description.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase)
+            && !description.Contains("TAP", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsUsableLanAddress(IPAddress address)
+    {
+        if (address is null)
+        {
+            return false;
+        }
+
+        if (address.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(address))
+        {
+            return false;
+        }
+
+        var bytes = address.GetAddressBytes();
+        return bytes.Length == 4
+            && bytes[0] != 0
+            && bytes[0] != 127
+            && !(bytes[0] == 169 && bytes[1] == 254)
+            && bytes[0] != 255;
+    }
 
     private static bool IsPrivateAddress(IPAddress address)
     {
         var bytes = address.GetAddressBytes();
         return bytes[0] == 10
             || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
-            || (bytes[0] == 192 && bytes[1] == 168);
+            || (bytes[0] == 192 && bytes[1] == 168)
+            || (bytes[0] == 100 && bytes[1] >= 64 && bytes[1] <= 127);
     }
+
+    public readonly record struct LanAddressCandidate(
+        IPAddress Address,
+        NetworkInterfaceType InterfaceType,
+        bool HasGateway,
+        bool IsPrivateAddress);
 }
 
 internal static class LanCertificateProvider
