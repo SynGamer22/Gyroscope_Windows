@@ -29,14 +29,8 @@ jobs:
           dotnet test ./desktop/MotionLinkVR.Tests/MotionLinkVR.Tests.csproj --configuration Release --no-build
 
       - name: Publish portable Windows app
-        run: |
-          dotnet publish ./desktop/MotionLinkVR.App/MotionLinkVR.App.csproj \
-            --configuration Release \
-            --runtime win-x64 \
-            --self-contained true \
-            --output ./artifacts/windows-x64 \
-            -p:PublishSingleFile=true \
-            -p:UseAppHost=true
+        shell: pwsh
+        run: dotnet publish ./desktop/MotionLinkVR.App/MotionLinkVR.App.csproj --configuration Release --runtime win-x64 --self-contained true --output ./artifacts/windows-x64 -p:PublishSingleFile=true -p:UseAppHost=true
 
       - name: Zip portable output
         shell: pwsh

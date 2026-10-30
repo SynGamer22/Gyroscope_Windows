@@ -2,10 +2,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="MotionLinkVR.App.MainWindow"
         Title="MotionLink VR"
-        Width="820"
-        Height="620"
-        MinWidth="720"
-        MinHeight="520"
+        Width="940"
+        Height="760"
+        MinWidth="820"
+        MinHeight="680"
         CanResize="True">
     <Grid Margin="18" RowDefinitions="Auto,*" ColumnDefinitions="*">
         <Border Grid.Row="0" Padding="18" Margin="0,0,0,16" CornerRadius="18" Background="#121826" BorderBrush="#2f5dff" BorderThickness="1">
@@ -13,8 +13,8 @@
                 <TextBlock Grid.Column="0" Text="MotionLink VR" FontSize="28" FontWeight="SemiBold" Foreground="#EAF4FF" VerticalAlignment="Center"/>
                 <Border Grid.Column="1" Width="18" Height="18" CornerRadius="9" Margin="16,0" Background="#28d17c" HorizontalAlignment="Left" VerticalAlignment="Center"/>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
-                    <Button Content="Start" Width="110" Click="StartButton_Click"/>
-                    <Button Content="Stop" Width="110" Click="StopButton_Click"/>
+                    <Button x:Name="StartButton" Content="Start LAN" Width="110" Click="StartButton_Click"/>
+                    <Button x:Name="StopButton" Content="Stop" Width="110" Click="StopButton_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -23,7 +23,7 @@
             <Border Grid.Column="0" CornerRadius="18" Background="#0e1628" BorderBrush="#4960a8" BorderThickness="1" Padding="18">
                 <StackPanel Spacing="18">
                     <TextBlock Text="Connection" FontSize="18" FontWeight="SemiBold" Foreground="#dfe9ff"/>
-                    <TextBlock x:Name="ConnectionStatusText" Text="Disconnected" Foreground="#8cc6ff" FontSize="16"/>
+                    <TextBlock x:Name="ConnectionStatusText" Text="Stopped" Foreground="#8cc6ff" FontSize="16"/>
                     <TextBlock x:Name="OrientationText" Text="Pitch: 0.00 | Yaw: 0.00 | Roll: 0.00" FontSize="16" Foreground="#e7ebff"/>
                     <TextBlock x:Name="MouseText" Text="Mouse delta: 0, 0" FontSize="16" Foreground="#e7ebff"/>
 
@@ -65,12 +65,18 @@
             <Border Grid.Column="1" CornerRadius="18" Background="#121b2e" BorderBrush="#4960a8" BorderThickness="1" Padding="18">
                 <StackPanel Spacing="18">
                     <TextBlock Text="Status" FontSize="18" FontWeight="SemiBold" Foreground="#dfe9ff"/>
-                    <TextBlock Text="Controller status: Ready" Foreground="#a9d4ff"/>
-                    <TextBlock Text="Latency: 0 ms" Foreground="#a9d4ff"/>
-                    <TextBlock Text="Session: Not paired" Foreground="#a9d4ff"/>
-                    <TextBlock Text="Motion active: false" Foreground="#a9d4ff"/>
-                    <TextBlock Text="Tray: Available" Foreground="#a9d4ff"/>
-                    <TextBlock Text="Build: Portable x64" Foreground="#a9d4ff"/>
+                    <TextBlock Text="Controller URL (same Wi-Fi)" Foreground="#a9d4ff"/>
+                    <TextBox x:Name="ControllerUrlText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="44"/>
+                    <Button Content="Copy controller URL" Click="CopyControllerUrl_Click" HorizontalAlignment="Left"/>
+                    <TextBlock Text="Certificate setup link (open on phone once)" Foreground="#a9d4ff"/>
+                    <TextBox x:Name="CertificateUrlText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="44"/>
+                    <TextBlock Text="Certificate SHA-256 fingerprint" Foreground="#a9d4ff"/>
+                    <TextBlock x:Name="CertificateFingerprintText" Text="" TextWrapping="Wrap" Foreground="#c9f4ff"/>
+                    <TextBlock Text="On Android: open the certificate link, install it as a CA certificate in Settings, then open the HTTPS controller URL. Allow MotionLink VR on the Windows firewall's Private networks prompt." Foreground="#ffc98f" TextWrapping="Wrap"/>
+                    <TextBlock Text="Pairing code" Foreground="#a9d4ff"/>
+                    <TextBlock x:Name="PairingCodeText" Text="Not started" FontSize="20" FontWeight="Bold" Foreground="#c9f4ff"/>
+                    <TextBlock x:Name="LatencyText" Text="Stream: disconnected" Foreground="#a9d4ff"/>
+                    <TextBlock x:Name="MotionStateText" Text="Motion inactive" Foreground="#a9d4ff"/>
                     <TextBlock Text="Warning: Some games may block synthetic input or require anti-cheat exceptions." Foreground="#ffc98f" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>

@@ -20,9 +20,9 @@ export function createMotionState() {
     offsetRoll: 0,
     lastTimestamp: 0,
     isActive: false,
-    smoothing: 0.2,
-    sensitivity: 1.0,
-    deadzone: 0.6,
+    smoothing: 0,
+    sensitivity: 1,
+    deadzone: 0,
     isPaused: false
   };
 }
@@ -49,20 +49,8 @@ export function updateMotionState(state, pitch, yaw, roll, timestamp) {
   const relativeYaw = normalizeAngle(normalizedYaw - state.offsetYaw);
   const relativeRoll = normalizeAngle(normalizedRoll - state.offsetRoll);
 
-  if (Math.abs(relativePitch) <= state.deadzone) {
-    state.pitch = 0;
-  } else {
-    const target = relativePitch * state.sensitivity;
-    state.pitch = state.pitch + (target - state.pitch) * (1 - state.smoothing);
-  }
-
-  if (Math.abs(relativeYaw) <= state.deadzone) {
-    state.yaw = 0;
-  } else {
-    const target = relativeYaw * state.sensitivity;
-    state.yaw = state.yaw + (target - state.yaw) * (1 - state.smoothing);
-  }
-
+  state.pitch = relativePitch;
+  state.yaw = relativeYaw;
   state.roll = relativeRoll;
   state.lastTimestamp = timestamp;
   return true;

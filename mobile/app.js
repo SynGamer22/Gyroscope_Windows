@@ -1,27 +1,21 @@
-import { createMotionState, recenterMotion, updateMotionState } from './motion.js';
-import { createPeerConnection, createDataChannel, safeJsonParse } from './webrtc.js';
-import { createSupabaseClient, fetchSessionInfo, insertSignal } from './supabase.js';
+import { createMotionState, normalizeAngle, recenterMotion, updateMotionState } from './motion.js';
 
+const pairingCode = new URLSearchParams(location.search).get('code') || '';
+const socketUrl = pairingCode ? `wss://${location.host}/motion?code=${encodeURIComponent(pairingCode)}` : '';
 const appState = {
   motion: createMotionState(),
-  peerConnection: null,
-  channel: null,
+  socket: null,
+  socketRetries: 0,
+  allowReconnect: true,
   isRunning: false,
   isPaused: false,
-  sensorSupported: false,
-  pairingCode: 'MOTION',
-  latestTimestamp: 0,
-  status: {
-    connection: 'Disconnected',
-    sensor: 'Waiting',
-    latency: '—'
-  }
+  firstSensorEvent: true,
+  latestRaw: null
 };
 
 const connectionBadge = document.getElementById('connectionBadge');
 const connectionStatus = document.getElementById('connectionStatus');
 const sensorStatus = document.getElementById('sensorStatus');
-const latencyStatus = document.getElementById('latencyStatus');
 const pairingCodeNode = document.getElementById('pairingCode');
 const pitchValue = document.getElementById('pitchValue');
 const yawValue = document.getElementById('yawValue');
@@ -37,180 +31,175 @@ const deadzoneRange = document.getElementById('deadzoneRange');
 const sensitivityValue = document.getElementById('sensitivityValue');
 const smoothingValue = document.getElementById('smoothingValue');
 const deadzoneValue = document.getElementById('deadzoneValue');
+const errorMessage = document.getElementById('errorMessage');
 
-function setConnection(state) {
-  appState.status.connection = state;
+function setConnection(state, connected = false) {
   connectionBadge.textContent = state;
-  connectionBadge.className = `badge ${state === 'Connected' ? 'connected' : 'disconnected'}`;
+  connectionBadge.className = `badge ${connected ? 'connected' : 'disconnected'}`;
   connectionStatus.textContent = state;
 }
 
-function updateSensorStatus(label) {
-  appState.status.sensor = label;
-  sensorStatus.textContent = label;
+function showError(message) {
+  errorMessage.textContent = message;
+  errorMessage.hidden = !message;
+}
+
+function sendPacket(packet) {
+  if (!appState.socket || appState.socket.readyState !== WebSocket.OPEN) return false;
+  if (appState.socket.bufferedAmount > 8192) return false;
+  appState.socket.send(JSON.stringify(packet));
+  return true;
+}
+
+function sendSettings() {
+  sendPacket({
+    type: 'settings',
+    sensitivity: Number(sensitivityRange.value),
+    smoothing: Number(smoothingRange.value),
+    deadzone: Number(deadzoneRange.value)
+  });
+}
+
+function connectSocket() {
+  if (!socketUrl || !appState.allowReconnect) {
+    setConnection('No pairing code');
+    return;
+  }
+  if (appState.socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(appState.socket.readyState)) return;
+
+  setConnection('Connecting');
+  const socket = new WebSocket(socketUrl);
+  appState.socket = socket;
+  socket.addEventListener('open', () => {
+    appState.socketRetries = 0;
+    setConnection('PC connected', true);
+    sendSettings();
+    if (appState.isRunning && !appState.isPaused) sendPacket({ type: 'resume' });
+  });
+  socket.addEventListener('close', () => {
+    if (appState.socket === socket) appState.socket = null;
+    setConnection('PC disconnected');
+    if (appState.allowReconnect) {
+      const delay = Math.min(5000, 500 * (2 ** appState.socketRetries));
+      appState.socketRetries += 1;
+      window.setTimeout(connectSocket, delay);
+    }
+  });
+  socket.addEventListener('error', () => setConnection('Cannot reach PC'));
 }
 
 function updateReadouts(yaw, pitch, roll) {
   pitchValue.textContent = `${pitch.toFixed(2)}°`;
   yawValue.textContent = `${yaw.toFixed(2)}°`;
   rollValue.textContent = `${roll.toFixed(2)}°`;
-
-  const x = 50 + yaw * 1.5;
-  const y = 50 + pitch * 1.5;
-  motionMarker.style.transform = `translate(${x - 50}%, ${y - 50}%)`;
+  motionMarker.style.left = `${Math.max(12, Math.min(88, 50 + yaw * 1.2))}%`;
+  motionMarker.style.top = `${Math.max(12, Math.min(88, 50 + pitch * 1.2))}%`;
 }
 
 function handleOrientationEvent(event) {
   if (!appState.isRunning || appState.isPaused) return;
-
-  const pitch = Number.isFinite(event.beta) ? event.beta : 0;
-  const yaw = Number.isFinite(event.gamma) ? event.gamma : 0;
-  const roll = Number.isFinite(event.alpha) ? event.alpha : 0;
-
-  if (!Number.isFinite(pitch) || !Number.isFinite(yaw) || !Number.isFinite(roll)) {
-    updateSensorStatus('Invalid');
+  if (!Number.isFinite(event.beta) || !Number.isFinite(event.gamma) || !Number.isFinite(event.alpha)) {
+    sensorStatus.textContent = 'Unreliable data';
     return;
   }
 
-  updateSensorStatus('Active');
-  const timestamp = Date.now();
-  const updated = updateMotionState(appState.motion, pitch, yaw, roll, timestamp);
-  if (!updated) {
-    return;
-  }
-
-  updateReadouts(appState.motion.yaw, appState.motion.pitch, appState.motion.roll);
-
-  const payload = {
-    yaw: Number(appState.motion.yaw.toFixed(3)),
-    pitch: Number(appState.motion.pitch.toFixed(3)),
-    roll: Number(appState.motion.roll.toFixed(3)),
-    timestamp
+  const raw = {
+    pitch: normalizeAngle(event.beta),
+    yaw: normalizeAngle(event.alpha),
+    roll: normalizeAngle(event.gamma)
   };
-
-  if (appState.channel && appState.channel.readyState === 'open') {
-    appState.channel.send(JSON.stringify(payload));
+  appState.latestRaw = raw;
+  if (appState.firstSensorEvent) {
+    recenterMotion(appState.motion, raw.pitch, raw.yaw, raw.roll);
+    appState.firstSensorEvent = false;
   }
+
+  if (!updateMotionState(appState.motion, raw.pitch, raw.yaw, raw.roll, Date.now())) return;
+  sensorStatus.textContent = 'Active';
+  updateReadouts(appState.motion.yaw, appState.motion.pitch, appState.motion.roll);
+  sendPacket({
+    type: 'motion',
+    yaw: appState.motion.yaw,
+    pitch: appState.motion.pitch,
+    roll: appState.motion.roll,
+    timestamp: Date.now()
+  });
 }
 
 async function requestSensorPermission() {
   if (!('DeviceOrientationEvent' in window)) {
-    updateSensorStatus('Unsupported');
-    throw new Error('Your browser does not support the Device Orientation API.');
+    throw new Error('This browser does not support orientation sensors. Use Android Chrome.');
   }
-
-  try {
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      const response = await DeviceOrientationEvent.requestPermission();
-      if (response !== 'granted') {
-        throw new Error('Motion permission was denied.');
-      }
-    }
-
-    appState.sensorSupported = true;
-    updateSensorStatus('Ready');
-    return true;
-  } catch (error) {
-    updateSensorStatus('Denied');
-    throw error;
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    const response = await DeviceOrientationEvent.requestPermission();
+    if (response !== 'granted') throw new Error('Motion permission was denied. Allow motion access in the browser settings.');
   }
 }
 
 function bindControls() {
-  sensitivityRange.addEventListener('input', (event) => {
-    const value = Number(event.target.value);
-    appState.motion.sensitivity = value;
-    sensitivityValue.textContent = `${value.toFixed(1)}x`;
-  });
-
-  smoothingRange.addEventListener('input', (event) => {
-    const value = Number(event.target.value);
-    appState.motion.smoothing = value;
-    smoothingValue.textContent = value.toFixed(2);
-  });
-
-  deadzoneRange.addEventListener('input', (event) => {
-    const value = Number(event.target.value);
-    appState.motion.deadzone = value;
-    deadzoneValue.textContent = `${value.toFixed(1)}°`;
-  });
+  for (const control of [sensitivityRange, smoothingRange, deadzoneRange]) {
+    control.addEventListener('input', () => {
+      sensitivityValue.textContent = `${Number(sensitivityRange.value).toFixed(1)}x`;
+      smoothingValue.textContent = Number(smoothingRange.value).toFixed(2);
+      deadzoneValue.textContent = `${Number(deadzoneRange.value).toFixed(1)}°`;
+      sendSettings();
+    });
+  }
 
   startMotionButton.addEventListener('click', async () => {
+    showError('');
     try {
       await requestSensorPermission();
       appState.isRunning = true;
       appState.isPaused = false;
+      appState.firstSensorEvent = true;
       window.addEventListener('deviceorientation', handleOrientationEvent, true);
-      setConnection('Connected');
+      sensorStatus.textContent = 'Waiting for sensor';
       startMotionButton.textContent = 'Motion Live';
+      pauseButton.textContent = 'Pause';
+      sendPacket({ type: 'resume' });
     } catch (error) {
-      console.error(error);
-      updateSensorStatus('Error');
+      sensorStatus.textContent = 'Unavailable';
+      showError(error instanceof Error ? error.message : 'Could not start motion sensors.');
     }
   });
 
   pauseButton.addEventListener('click', () => {
     appState.isPaused = !appState.isPaused;
     pauseButton.textContent = appState.isPaused ? 'Resume' : 'Pause';
-    setConnection(appState.isPaused ? 'Paused' : 'Connected');
+    sendPacket({ type: appState.isPaused ? 'pause' : 'resume' });
+    const open = appState.socket?.readyState === WebSocket.OPEN;
+    setConnection(appState.isPaused ? 'Paused' : open ? 'PC connected' : 'PC disconnected', open && !appState.isPaused);
   });
 
   disconnectButton.addEventListener('click', () => {
+    appState.allowReconnect = false;
     appState.isRunning = false;
     appState.isPaused = true;
     window.removeEventListener('deviceorientation', handleOrientationEvent, true);
-    if (appState.peerConnection) {
-      appState.peerConnection.close();
-      appState.peerConnection = null;
-    }
-    if (appState.channel) {
-      appState.channel.close();
-      appState.channel = null;
-    }
+    sendPacket({ type: 'pause' });
+    appState.socket?.close();
+    appState.socket = null;
+    sensorStatus.textContent = 'Offline';
     setConnection('Disconnected');
-    updateSensorStatus('Offline');
   });
 
   recenterButton.addEventListener('click', () => {
-    recenterMotion(appState.motion, appState.motion.pitch, appState.motion.yaw, appState.motion.roll);
+    if (!appState.latestRaw) return;
+    recenterMotion(appState.motion, appState.latestRaw.pitch, appState.latestRaw.yaw, appState.latestRaw.roll);
     updateReadouts(0, 0, 0);
+    sendPacket({ type: 'recenter' });
   });
 }
 
-async function initializeWebRtc() {
-  const url = window.location.origin;
-  if (!url || url.includes('localhost') || url.includes('127.0.0.1')) {
-    console.warn('Development mode is active; static WebRTC pair flow is limited to local network testing.');
-  }
-
-  const code = appState.pairingCode;
-  pairingCodeNode.textContent = code;
-
-  const supabaseUrl = (window.__SUPABASE_URL__ || '').trim();
-  const supabaseKey = (window.__SUPABASE_PUBLISHABLE_KEY__ || '').trim();
-
-  if (supabaseUrl && supabaseKey) {
-    try {
-      const supabase = await createSupabaseClient({ url: supabaseUrl, anonKey: supabaseKey });
-      const session = await fetchSessionInfo(supabase, code);
-      if (session) {
-        const peerConnection = createPeerConnection({ iceServers: [] });
-        const channel = createDataChannel(peerConnection, 'motion');
-        appState.peerConnection = peerConnection;
-        appState.channel = channel;
-        setConnection('Connected');
-        channel.onopen = () => setConnection('Connected');
-        channel.onclose = () => setConnection('Disconnected');
-      }
-    } catch (error) {
-      console.warn('Supabase setup is incomplete; running in offline mode.', error);
-    }
-  }
+pairingCodeNode.textContent = pairingCode || 'Open the PC-provided URL';
+if (!window.isSecureContext && location.hostname !== 'localhost') {
+  showError('This page is not a trusted HTTPS origin. Install the local certificate using the setup link from the PC app, then reload.');
 }
-
 bindControls();
-initializeWebRtc();
+connectSocket();
 
-window.addEventListener('beforeunload', () => {
-  if (appState.peerConnection) appState.peerConnection.close();
+window.addEventListener('pagehide', () => {
+  sendPacket({ type: 'pause' });
+  appState.socket?.close();
 });

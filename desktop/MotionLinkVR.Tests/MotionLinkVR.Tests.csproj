@@ -21,5 +21,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../MotionLinkVR.Core/MotionLinkVR.Core.csproj" />
+    <ProjectReference Include="../MotionLinkVR.App/MotionLinkVR.App.csproj" />
   </ItemGroup>
 </Project>

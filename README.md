@@ -1,6 +1,6 @@
 # MotionLink VR
 
-MotionLink VR is a mobile-first gyroscope controller and Windows companion app for camera movement in PC games. The phone uses the browser's motion sensors and sends a live orientation stream to the Windows app over WebRTC. The desktop app converts the motion into relative mouse movement using Windows input APIs so it can work like a head-tracked camera controller without injecting code or installing a driver.
+MotionLink VR is a phone gyroscope controller and Windows companion app for camera movement in PC games. When both devices are on the same Wi-Fi, the Windows app hosts the mobile controller and receives motion directly over a secure local WebSocket. The desktop app converts relative orientation changes into mouse movement using Windows `SendInput`; it does not inject code or install a driver.
 
 ## What this project contains
 
@@ -19,8 +19,8 @@ MotionLink VR is a mobile-first gyroscope controller and Windows companion app f
 - Sensitivity, smoothing, and deadzone controls
 - Connection status and sensor status panels
 - Device support checks for unsupported browsers
-- Pairing code metadata and local WebRTC-ready flow
-- Works as a static site for HTTPS hosting
+- Temporary pairing code and direct same-Wi-Fi connection
+- Controller site served by the Windows app over local HTTPS
 - PWA install support when served over HTTPS
 
 ## Windows companion features
@@ -34,22 +34,21 @@ MotionLink VR is a mobile-first gyroscope controller and Windows companion app f
 - Portable app output that runs without admin rights for normal use
 - User settings outside the repo path
 
-## Communication architecture
+## Connection architecture
 
-The design follows the requested flow:
+1. The Windows app starts a local HTTPS site and WebSocket on the PC's Wi-Fi address.
+2. The PC displays a temporary pairing URL and code.
+3. Android Chrome opens that URL, requests motion permission, and sends small orientation packets directly to the PC.
+4. The desktop app converts the latest yaw and pitch changes into relative mouse deltas.
 
-1. The phone browser reads orientation data.
-2. It sends real-time motion packets over a WebRTC DataChannel.
-3. The Windows app receives those packets.
-4. The app converts relative yaw and pitch into mouse deltas.
-5. Supabase is used for pairing and signaling, not for the main motion stream.
+This direct local connection does not use Supabase, WebRTC, a public website, or a cloud relay. It is intended for devices on the same Wi-Fi. A router setting called client isolation or guest isolation can block devices from reaching each other.
 
 ## Important limitations
 
 - This is not full VR or full 6-DoF tracking. It is rotational camera control.
 - Sensor accuracy depends on the phone, browser, and device calibration.
 - Some games block synthetic mouse input or restrict it through anti-cheat software.
-- WebRTC connectivity depends on network conditions and STUN/TURN availability.
+- Local connectivity depends on the Wi-Fi allowing devices to communicate and the Windows firewall allowing MotionLink VR on private networks.
 - Magnetic heading, orientation drift, and browser suspension can affect readings.
 
 ## Project layout
@@ -82,51 +81,24 @@ The design follows the requested flow:
 └── .gitignore
 ```
 
-## Supabase setup
+## Cloud services
 
-1. Create a Supabase project.
-2. Open the SQL editor.
-3. Run the SQL in `supabase/schema.sql`.
-4. Copy `.env.example` to `.env`.
-5. Fill in your values.
+No Supabase account, public website, or cloud credentials are required for same-Wi-Fi use. `supabase/schema.sql` is a leftover signaling prototype and is not used by the local LAN connection. Do not configure it for this workflow.
 
-Example:
+## Connect your phone on the same Wi-Fi
 
-```bash
-cp .env.example .env
-```
+1. Install and extract the latest Windows ZIP. Keep every file from the ZIP together in one folder.
+2. Start `MotionLinkVR.App.exe` on the PC and click **Start LAN**.
+3. Allow MotionLink VR through the Windows Defender Firewall for **Private networks** if Windows asks. Do not enable it for public networks.
+4. On the phone, open the **Certificate setup link** shown in the PC app. Android requires trusting the local certificate so Chrome can use motion sensors on this local HTTPS page.
+5. Install the downloaded certificate as a **CA certificate** in Android Settings. Android menu names vary; Settings search for “CA certificate” or “Install a certificate” is usually quickest. Verify the SHA-256 fingerprint shown in the PC app if Android displays it.
+6. Open the **Controller URL** shown in the PC app in Android Chrome. The URL includes a temporary pairing code.
+7. Tap **Start Motion** and allow the sensor permission. The PC should change to “Phone connected” and then “Motion active”.
+8. Hold the phone in a comfortable neutral position; the first sensor reading is automatically recentered. Use **Recenter** later as needed.
 
-Then edit `.env`:
+Both devices must be on the same non-guest Wi-Fi. Turn off VPNs temporarily if they route local traffic away from the LAN. If the certificate or connection fails, stop and start the LAN server to generate a fresh URL and pairing code. The app listens on TCP ports `47820` (certificate download) and `47821` (HTTPS/WebSocket).
 
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_PUBLISHABLE_KEY=your-publishable-anon-key
-```
-
-Do not use a secret or service-role key in browser files or in the public repo.
-
-## Host the mobile app over HTTPS
-
-The mobile controller needs HTTPS because motion sensor permission requires secure origins in modern browsers.
-
-Recommended options:
-
-- GitHub Pages with a static site
-- Cloudflare Pages
-- Netlify
-- Any HTTPS static host
-- A local HTTPS reverse proxy for development
-
-For local testing, use a trusted certificate and browser access to `https://localhost` or a local LAN address.
-
-Example GitHub Pages flow:
-
-```bash
-cd mobile
-python3 -m http.server 8000
-```
-
-Then serve it via GitHub Pages or another HTTPS host. Do not rely on plain HTTP for the actual motion permission flow.
+The phone can send motion only while the Windows app is running and **Start LAN** is active. The server stops when you click **Stop** or exit the app.
 
 ## Build the Windows app
 
@@ -173,15 +145,6 @@ After a successful GitHub Action run:
 5. Click `Artifacts`.
 6. Download `MotionLinkVR-Windows-x64.zip`.
 7. Extract it and run `MotionLinkVR.App.exe`.
-
-## Pair the phone with the PC
-
-1. Launch the Windows app on your PC.
-2. Host the mobile HTML over HTTPS.
-3. Open the controller in Android Chrome.
-4. On the phone, tap `Start Motion` and allow motion permissions.
-5. Use the pairing code shown in the mobile app or connect through the configured Supabase signaling flow.
-6. Confirm the desktop app shows the connection as active.
 
 ## Calibration and recentering
 
@@ -268,19 +231,21 @@ dotnet test MotionLinkVR.sln --nologo
 - Try a manual recenter.
 - Confirm the Windows app is not paused or emergency-stopped.
 
-### WebRTC connection issues
+### Phone cannot reach the PC
 
-- Confirm that the phone and PC are on the same network or have reachable ICE/STUN endpoints.
-- Test TURN servers if direct connectivity fails.
-- Confirm Supabase configuration values are correct.
-- Check browser console and desktop logs for connection errors.
+- Confirm both devices are on the same Wi-Fi, not a guest network.
+- Allow the app through Windows Firewall on private networks.
+- Confirm the PC's Wi-Fi is not using client isolation.
+- Install the local CA certificate on Android and reopen the exact HTTPS URL shown by the PC app.
+- Keep both displayed ports available; another program using either port will prevent startup.
+- Stop and restart the LAN server to refresh its pairing URL and code.
 
 ## Known limitations
 
 - The app is not a full VR system and does not provide true positional tracking.
 - Phone sensors can drift, especially on magnetic heading and motion smoothing.
 - Some browsers throttle background tabs and may delay motion events.
-- Direct peer-to-peer connectivity is not guaranteed on all networks.
+- Some Wi-Fi networks block communication between clients, even when both devices show the same network name.
 - Game compatibility varies by title and anti-cheat restrictions.
 
 ## What works in this repo
