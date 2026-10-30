@@ -252,7 +252,9 @@ public sealed class LanMotionServer : IAsyncDisposable
                         _ => false
                     }))
                 {
-                    onMotion(packet);
+                    onMotion(packet.Type == "motion"
+                        ? packet with { Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }
+                        : packet);
                 }
             }
             catch (JsonException)
@@ -289,8 +291,8 @@ public sealed class LanMotionServer : IAsyncDisposable
     {
         return candidates
             .Where(candidate => IsUsableLanAddress(candidate.Address))
-            .OrderByDescending(candidate => candidate.HasGateway)
-            .ThenByDescending(candidate => candidate.InterfaceType == NetworkInterfaceType.Wireless80211)
+            .OrderByDescending(candidate => candidate.InterfaceType == NetworkInterfaceType.Wireless80211)
+            .ThenByDescending(candidate => candidate.HasGateway)
             .ThenByDescending(candidate => candidate.InterfaceType == NetworkInterfaceType.Ethernet)
             .ThenByDescending(candidate => candidate.IsPrivateAddress)
             .Select(candidate => candidate.Address)

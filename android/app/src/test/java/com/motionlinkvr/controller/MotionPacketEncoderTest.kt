@@ -1,5 +1,6 @@
 package com.motionlinkvr.controller
 
+import java.net.InetAddress
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -26,5 +27,37 @@ class MotionPacketEncoderTest {
             MotionPacketEncoder.settings(1.2f, 0.2f, 0.6f)
         )
         assertEquals("""{"type":"pause"}""", MotionPacketEncoder.command("pause"))
+    }
+
+    @Test
+    fun validatesManualIpv4AndDiscoveryResponses() {
+        assertEquals(true, LanDiscovery.isValidIpv4("192.168.1.25"))
+        assertEquals(false, LanDiscovery.isValidIpv4("192.168.1.256"))
+        assertEquals(false, LanDiscovery.isValidIpv4("192.168.1"))
+        assertEquals(
+            true,
+            LanDiscovery.isValidServerResponse("MotionLinkVR", "192.168.1.25", 47820, 47821)
+        )
+        assertEquals(
+            false,
+            LanDiscovery.isValidServerResponse("other", "192.168.1.25", 47820, 47821)
+        )
+    }
+
+    @Test
+    fun enumeratesUsableHostsOnNormalWifiSubnets() {
+        val hosts = LanDiscovery.subnetHosts(
+            InetAddress.getByName("192.168.1.25") as java.net.Inet4Address,
+            24
+        )
+
+        assertEquals(253, hosts.size)
+        assertEquals(false, hosts.contains("192.168.1.25"))
+        assertEquals(false, hosts.contains("192.168.1.0"))
+        assertEquals(false, hosts.contains("192.168.1.255"))
+        assertEquals(emptyList<String>(), LanDiscovery.subnetHosts(
+            InetAddress.getByName("192.168.1.25") as java.net.Inet4Address,
+            16
+        ))
     }
 }

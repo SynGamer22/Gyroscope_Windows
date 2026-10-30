@@ -24,6 +24,17 @@ public class LanConnectionTests
     }
 
     [Fact]
+    public void SelectPreferredLanAddress_PrefersWifiOverOtherGatewayedInterfaces()
+    {
+        var selected = LanMotionServer.SelectPreferredLanAddress([
+            new LanMotionServer.LanAddressCandidate(IPAddress.Parse("10.20.30.40"), NetworkInterfaceType.Ethernet, true, true),
+            new LanMotionServer.LanAddressCandidate(IPAddress.Parse("192.168.1.42"), NetworkInterfaceType.Wireless80211, false, true)
+        ]);
+
+        Assert.Equal(IPAddress.Parse("192.168.1.42"), selected);
+    }
+
+    [Fact]
     public async Task Server_ReceivesMotionOnlyWithCorrectPairingCode()
     {
         var mobileRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../mobile"));
@@ -64,6 +75,8 @@ public class LanConnectionTests
         using var httpClient = new HttpClient(httpHandler);
         var controllerPage = await httpClient.GetStringAsync($"https://127.0.0.1:{server.HttpsPort}/?code={server.PairingCode}");
         Assert.Contains("MotionLink VR", controllerPage);
+        var healthResponse = await httpClient.GetStringAsync($"http://127.0.0.1:{server.HttpPort}/health");
+        Assert.Contains("\"status\":\"ready\"", healthResponse);
 
         using var socket = new ClientWebSocket();
         socket.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
@@ -91,6 +104,10 @@ public class LanConnectionTests
         Assert.Equal(12.5, packet.Yaw);
         Assert.Equal(-4.25, packet.Pitch);
         Assert.Equal(1.5, packet.Roll);
+        Assert.InRange(
+            packet.Timestamp,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 5000,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 5000);
 
         await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", timeout.Token);
     }

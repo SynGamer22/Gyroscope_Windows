@@ -97,7 +97,7 @@ No Supabase account, public website, or cloud credentials are required for same-
 4. Compare the certificate SHA-256 fingerprint in the Android confirmation with the Windows app. Only tap **Matches — connect** if they are identical.
 5. Tap **Start motion**, hold the phone still briefly to set its neutral position, and use **Pause**, **Recenter**, **Disconnect**, or the sensitivity controls as needed.
 
-Automatic discovery uses UDP port `47822`; the control connection uses TCP port `47821` and the local certificate download uses TCP port `47820`. Both devices must be on the same non-guest Wi-Fi, and the router must allow device-to-device traffic. If discovery fails, allow the Windows app through the firewall on Private networks and confirm client/AP isolation is disabled. Discovery does not transmit the pairing code; enter it from the Windows screen.
+Automatic discovery uses UDP port `47822`, with a same-subnet TCP health-check fallback on port `47820`; the control connection uses TCP port `47821` and the local certificate download uses TCP port `47820`. If automatic discovery still fails, enter the PC's Wi-Fi IPv4 address (shown by the Windows app) in **PC address**; this bypasses discovery but still validates the certificate fingerprint and pairing code. Both devices must be on the same non-guest Wi-Fi, and the router must allow device-to-device traffic. Allow MotionLink VR through the Windows firewall on Private networks. Discovery does not transmit the pairing code; enter it from the Windows screen.
 
 ## Connect with Android Chrome
 
@@ -110,7 +110,7 @@ Automatic discovery uses UDP port `47822`; the control connection uses TCP port 
 7. Tap **Start Motion** and allow the sensor permission. The PC should change to “Phone connected” and then “Motion active”.
 8. Hold the phone in a comfortable neutral position; the first sensor reading is automatically recentered. Use **Recenter** later as needed.
 
-Both devices must be on the same non-guest Wi-Fi. Turn off VPNs temporarily if they route local traffic away from the LAN. If the certificate or connection fails, stop and start the LAN server to generate a fresh URL and pairing code. The app listens on TCP ports `47820` (certificate download) and `47821` (HTTPS/WebSocket).
+Both devices must be on the same non-guest Wi-Fi. Turn off VPNs temporarily if they route local traffic away from the LAN. If the certificate or connection fails, stop and start the LAN server to generate a fresh URL and pairing code. The app listens on TCP ports `47820` (certificate download and health check) and `47821` (HTTPS/WebSocket), plus UDP port `47822` for Android APK discovery.
 
 The phone can send motion only while the Windows app is running and **Start LAN** is active. The server stops when you click **Stop** or exit the app.
 

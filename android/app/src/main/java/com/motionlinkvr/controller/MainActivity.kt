@@ -3,6 +3,7 @@ package com.motionlinkvr.controller
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.net.wifi.WifiManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -56,10 +57,6 @@ private const val DISCOVERY_PORT = 47822
 private const val DISCOVERY_REQUEST = "MOTIONLINK_DISCOVER_V1"
 private const val MAX_CERTIFICATE_BYTES = 16 * 1024
 
-private data class DiscoveredPc(val address: String, val httpPort: Int, val httpsPort: Int) {
-    override fun toString(): String = "$address  (MotionLink VR)"
-}
-
 class MainActivity : Activity(), SensorEventListener {
     private val worker: ExecutorService = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -69,6 +66,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private lateinit var statusText: TextView
     private lateinit var pcSpinner: Spinner
+    private lateinit var pcAddressInput: EditText
     private lateinit var pairingCodeInput: EditText
     private lateinit var scanButton: Button
     private lateinit var connectButton: Button
@@ -179,6 +177,13 @@ class MainActivity : Activity(), SensorEventListener {
         pcSpinner = Spinner(this)
         content.addView(label("Detected PC"))
         content.addView(pcSpinner)
+        content.addView(label("PC address (use this if search finds nothing)"))
+        pcAddressInput = EditText(this).apply {
+            hint = "PC Wi-Fi IP, e.g. 192.168.1.25"
+            isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+        }
+        content.addView(pcAddressInput)
         scanButton = button("Search for PCs") { scanForPcs() }
         content.addView(scanButton)
 
@@ -289,7 +294,7 @@ class MainActivity : Activity(), SensorEventListener {
                         pcs.ifEmpty { listOf(DiscoveredPc("No PC found", 0, 0)) }
                     ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
                     statusText.text = if (pcs.isEmpty()) {
-                        "No PC found. Start LAN on Windows and allow MotionLink VR on your private network."
+                        "No PC found automatically. You can still enter the PC Wi-Fi IP below."
                     } else {
                         "Found ${pcs.size} PC${if (pcs.size == 1) "" else "s"} on the local network."
                     }
@@ -302,61 +307,141 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun discoverPcs(): List<DiscoveredPc> {
         val broadcastAddresses = linkedSetOf<InetAddress>()
+        val subnetHosts = linkedSetOf<String>()
         broadcastAddresses.add(InetAddress.getByName("255.255.255.255"))
         val interfaces = NetworkInterface.getNetworkInterfaces()
         while (interfaces.hasMoreElements()) {
             val networkInterface = interfaces.nextElement()
             if (!networkInterface.isUp || networkInterface.isLoopback) continue
             for (interfaceAddress in networkInterface.interfaceAddresses) {
-                if (interfaceAddress.address is Inet4Address) {
-                    interfaceAddress.broadcast?.let(broadcastAddresses::add)
+                val ipv4Address = interfaceAddress.address as? Inet4Address ?: continue
+                interfaceAddress.broadcast?.let(broadcastAddresses::add)
+                if (isPrivateNetworkAddress(ipv4Address)) {
+                    subnetHosts.addAll(
+                        LanDiscovery.subnetHosts(
+                            ipv4Address,
+                            interfaceAddress.networkPrefixLength.toInt()
+                        )
+                    )
                 }
             }
         }
 
         val found = linkedMapOf<String, DiscoveredPc>()
-        DatagramSocket().use { socket ->
-            socket.broadcast = true
-            val request = DISCOVERY_REQUEST.toByteArray(Charsets.UTF_8)
-            repeat(3) {
-                for (broadcast in broadcastAddresses) {
-                    socket.send(DatagramPacket(request, request.size, broadcast, DISCOVERY_PORT))
-                }
-                Thread.sleep(150)
-            }
-
-            socket.soTimeout = 300
-            val deadline = System.currentTimeMillis() + 2200
-            val buffer = ByteArray(1024)
-            while (System.currentTimeMillis() < deadline) {
-                try {
-                    val packet = DatagramPacket(buffer, buffer.size)
-                    socket.receive(packet)
-                    val response = JSONObject(String(packet.data, packet.offset, packet.length, Charsets.UTF_8))
-                    if (response.optString("service") != "MotionLinkVR") continue
-
-                    val address = response.optString("address")
-                    val httpPort = response.optInt("httpPort")
-                    val httpsPort = response.optInt("httpsPort")
-                    if (!isValidIpv4(address) || httpPort !in 1..65535 || httpsPort !in 1..65535) continue
-                    found[address] = DiscoveredPc(address, httpPort, httpsPort)
-                } catch (_: java.net.SocketTimeoutException) {
-                    continue
-                } catch (_: org.json.JSONException) {
-                    continue
-            }
-            }
+        val wifiManager = getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val multicastLock = wifiManager.createMulticastLock("MotionLinkVR.discovery").apply {
+            setReferenceCounted(false)
+            acquire()
         }
+        try {
+            DatagramSocket().use { socket ->
+                socket.broadcast = true
+                val request = DISCOVERY_REQUEST.toByteArray(Charsets.UTF_8)
+                repeat(3) {
+                    for (broadcast in broadcastAddresses) {
+                        socket.send(DatagramPacket(request, request.size, broadcast, DISCOVERY_PORT))
+                    }
+                    Thread.sleep(150)
+                }
+
+                socket.soTimeout = 300
+                val deadline = System.currentTimeMillis() + 1200
+                val buffer = ByteArray(1024)
+                while (System.currentTimeMillis() < deadline) {
+                    try {
+                        val packet = DatagramPacket(buffer, buffer.size)
+                        socket.receive(packet)
+                        val response = JSONObject(String(packet.data, packet.offset, packet.length, Charsets.UTF_8))
+                        val address = response.optString("address")
+                        val httpPort = response.optInt("httpPort")
+                        val httpsPort = response.optInt("httpsPort")
+                        if (!LanDiscovery.isValidServerResponse(
+                                response.optString("service"),
+                                address,
+                                httpPort,
+                                httpsPort
+                            )) continue
+                        found[address] = DiscoveredPc(address, httpPort, httpsPort)
+                    } catch (_: java.net.SocketTimeoutException) {
+                        continue
+                    } catch (_: org.json.JSONException) {
+                        continue
+                    }
+                }
+            }
+        } finally {
+            if (multicastLock.isHeld) multicastLock.release()
+        }
+
+        found.putAll(scanSubnets(subnetHosts))
         return found.values.toList()
     }
 
-    private fun isValidIpv4(value: String): Boolean {
-        val parts = value.split('.')
-        return parts.size == 4 && parts.all { part -> part.toIntOrNull()?.let { it in 0..255 } == true }
+    private fun isPrivateNetworkAddress(address: Inet4Address): Boolean {
+        val bytes = address.address
+        val first = bytes[0].toInt() and 0xff
+        val second = bytes[1].toInt() and 0xff
+        return first == 10 || (first == 172 && second in 16..31) || (first == 192 && second == 168)
+    }
+
+    private fun scanSubnets(addresses: Set<String>): Map<String, DiscoveredPc> {
+        if (addresses.isEmpty()) return emptyMap()
+        val probePool = Executors.newFixedThreadPool(32)
+        return try {
+            val probes = addresses.map { address ->
+                java.util.concurrent.Callable { probePc(address) }
+            }
+            probePool.invokeAll(probes, 5, TimeUnit.SECONDS)
+                .mapNotNull { future -> runCatching { future.get() }.getOrNull() }
+                .associateBy { it.address }
+        } finally {
+            probePool.shutdownNow()
+        }
+    }
+
+    private fun probePc(address: String): DiscoveredPc? {
+        val connection = URL("http://$address:47820/health")
+            .openConnection() as java.net.HttpURLConnection
+        connection.connectTimeout = 350
+        connection.readTimeout = 350
+        connection.instanceFollowRedirects = false
+        connection.useCaches = false
+        connection.requestMethod = "GET"
+        try {
+            if (connection.responseCode != 200) return null
+            val health = connection.inputStream.use { input ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(64)
+                while (output.size() < 256) {
+                    val count = input.read(buffer, 0, minOf(buffer.size, 256 - output.size()))
+                    if (count <= 0) break
+                    output.write(buffer, 0, count)
+                }
+                String(output.toByteArray(), Charsets.UTF_8)
+            }
+            if (JSONObject(health).optString("status") != "ready") return null
+            return DiscoveredPc(address, 47820, 47821)
+        } catch (_: java.io.IOException) {
+            return null
+        } catch (_: org.json.JSONException) {
+            return null
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun connectToPc() {
-        val pc = discoveredPcs.getOrNull(pcSpinner.selectedItemPosition)
+        val enteredAddress = pcAddressInput.text.toString().trim()
+        val pc = if (enteredAddress.isNotEmpty()) {
+            if (!LanDiscovery.isValidIpv4(enteredAddress)) {
+                statusText.text = "Enter the PC's IPv4 address, for example 192.168.1.25."
+                return
+            }
+            discoveredPcs.firstOrNull { it.address == enteredAddress }
+                ?: DiscoveredPc(enteredAddress, 47820, 47821)
+        } else {
+            discoveredPcs.getOrNull(pcSpinner.selectedItemPosition)
+        }
         if (pc == null) {
             statusText.text = "Search for a PC before connecting."
             return
